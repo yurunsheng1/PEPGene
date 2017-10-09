@@ -4,9 +4,9 @@
 import tensorflow as tf
 import common
 from utils import varDef
-from mainArgs import *
+from mainTrain.mainArgs import *
 tf_float_ = tf.float32
-
+# print(TRAINING_STEPS)
 #=================================================================================================================
 
 ## MHC onehot matrice 进行编码
@@ -108,7 +108,7 @@ def calc_loss_of_peps(real_peps, gene_ics):
 		losses
 	"""
 	pass
-	return
+	return tf.constant(10)
 	
 #=================================================================================================================
 ## 计算生成ics损失

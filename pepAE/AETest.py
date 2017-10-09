@@ -12,18 +12,19 @@ import AEInference as aeInf
 from mainTrain import mainInference as mainInf
 from AEargs import \
 	FILTERS,\
+	HIDDEN_SIZE,\
 	NUM_STEPS,\
 	NUM_KEYS,\
 	MOVING_AVERAGE_DECAY,\
 	MODEL_SAVE_PATH,\
 	EVAL_INTERVAL_SECS,\
 	SRC_EVAL_FILE
-	
 
 #=================================================================================================================
 def test(input_data):
 
-	with tf.Graph().as_default() as g:	
+	with tf.Graph().as_default() as g:
+		
 		## 输入输出
 		x = tf.placeholder(tf_float_, [None, NUM_STEPS * NUM_KEYS], name="input_x") # 315 = 15 * 21
 		y_real = tf.placeholder(tf_float_, [None, NUM_STEPS * NUM_KEYS], name="input_y_real") # y_real == x
@@ -35,11 +36,11 @@ def test(input_data):
 		y_infer = aeInf.run_rnn_decoder(outputs, HIDDEN_SIZE, NUM_STEPS, None)
 		y_real = tf.reshape(y_real, [-1, NUM_KEYS])
 		distance = mainInf.calc_loss_of_peps(y_real, y_infer)
-	
+		
 		## 通过变量重命名的方式加载模型
 		variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY)
 		variables_to_restore = variable_averages.variables_to_restore()
-		saver = tf.train.Saver(variables_to_restore)
+		saver = tf.train.Saver(variables_to_restore)	
 		
 		## 测试：每隔？秒计算一次损失
 		while True:
@@ -63,6 +64,6 @@ def test(input_data):
 def main(argv=None):
 	input_pep = loadFile.load_data(SRC_EVAL_FILE)
 	test(input_pep)
-
+	
 if __name__ == '__main__':
 	tf.app.run()

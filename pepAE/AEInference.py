@@ -4,6 +4,7 @@
 import tensorflow as tf
 import common
 from utils import varDef
+tf_float_ = tf.float32
 
 #=================================================================================================================
 def run_cnn_encoder(inputs, filters, regularizer):
@@ -19,7 +20,7 @@ def run_cnn_encoder(inputs, filters, regularizer):
 	filter_height_list, filter_depth, filter_width = filters
 	kernel_types = len(filter_height_list)
 	pass
-	return
+	return tf.constant(1.0,shape=[20,100])
 
 #=================================================================================================================
 ## rnn decoder

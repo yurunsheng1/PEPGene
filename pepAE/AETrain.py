@@ -2,6 +2,7 @@
 #-*- coding: UTF-8 -*- 
 #=================================================================================================================
 
+import os
 import tensorflow as tf
 import common
 import AEInference as aeInf
@@ -18,67 +19,79 @@ def inference(onehot_pep, regularizer):
 	# Phase of encoding: outputs[BATCH_SIZE, KERNEL_TYPES*FILTER_DEPTH]
 	outputs = aeInf.run_cnn_encoder(onehot_pep, filters, regularizer)
 	if regularizer != None:
-		# Phase of decoding: y_infer[BATCH_SIZE*15, 21]
+		# Phase of decoding: y_infer[BATCH_SIZE*15, 22]
 		y_infer = aeInf.run_rnn_decoder(outputs, HIDDEN_SIZE, NUM_STEPS, regularizer)
 		return y_infer
 	return outputs
-	
+
 #=================================================================================================================
 
 def train(inputs):
-	## 输入和标签
-	x = tf.placeholder(tf.int32, [None, NUM_STEPS * NUM_KEYS])
-	y_real = tf.placeholder(tf.int32, [None, NUM_STEPS * NUM_KEYS])
-	## 正则化
-	regularizer = tf.contrib.layers.l2_regularizer(REGULARAZATION_RATE)
-	## 输出
-	y_infer = inference(x, regularizer)
-	## 声明滑动平均对象
-	global_step = tf.Variable(0, trainable = False)
-	ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
-	ema_op = ema.apply(tf.trainable_variables())
-	## 定义损失函数
-	y_label = tf.reshape(y_real, [-1, NUM_KEYS]) #(300,21)
-	cross_entropy = tf.losses.softmax_cross_entropy(y_label, y_infer)
-	cross_entropy_mean = tf.reduce_mean(cross_entropy)
-	loss = cross_entropy_mean + tf.add_n(tf.get_collection("losses"))
-	learning_rate = tf.train.exponential_decay(
-		LEARNING_RATE_BASE, 			#learning_rate
-		global_step,					#global_step
-		len(inputs)//BATCH_SIZE,    	#decay_steps
-		LEARNING_RATE_DECAY				#decay_rate
-	)
-	train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, global_step = global_step)
-	with tf.control_dependencies([train_step, ema_op]):
-		train_op = tf.no_op(name = "train")
-		
-	## 初始化tf持久化类
-	saver = tf.train.Saver()
-	with tf.Session() as sess:
-		sess.run(tf.global_variables_initializer())
-		num = len(inputs)
-		for idx in range(TRAINING_STEPS):
-			start_idx = idx * BATCH_SIZE % num
-			end_idx = (idx+1) * BATCH_SIZE % num
-			if end_idx > start_idx:
-				xs = inputs[start_idx:end_idx]
-			else:
-				xs = inputs[start_idx:]+inputs[:end_idx]
+	with tf.name_scope('input'):
+		## 输入和标签
+		x = tf.placeholder(tf.int32, [None, NUM_STEPS * NUM_KEYS])
+		y_real = tf.placeholder(tf.int32, [None, NUM_STEPS * NUM_KEYS])
+		## 正则化
+		regularizer = tf.contrib.layers.l2_regularizer(REGULARAZATION_RATE)
+		## 输出
+		y_infer = inference(x, regularizer)
+		global_step = tf.Variable(0, trainable = False)	
+	
+	with tf.name_scope('moving_average'):	
+		ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
+		ema_op = ema.apply(tf.trainable_variables())
+	
+	with tf.name_scope('loss_function'):
+		y_label = tf.reshape(y_real, [-1, NUM_KEYS]) #(300,22)
+		cross_entropy = tf.losses.softmax_cross_entropy(y_label, y_infer)
+		cross_entropy_mean = tf.reduce_mean(cross_entropy)
+		loss = cross_entropy_mean + tf.add_n(tf.get_collection("losses"))
+	
+	with tf.name_scope('train_step'):
+		learning_rate = tf.train.exponential_decay(
+			LEARNING_RATE_BASE, 			#learning_rate
+			global_step,					#global_step
+			len(inputs)//BATCH_SIZE,    	#decay_steps
+			LEARNING_RATE_DECAY				#decay_rate
+		)
+		train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, global_step = global_step)
+		with tf.control_dependencies([train_step, ema_op]):
+			train_op = tf.no_op(name = "train")
+		## 初始化tf持久化类
+		saver = tf.train.Saver()
+		with tf.Session() as sess:
+			sess.run(tf.global_variables_initializer())
+			num = len(inputs)
+			for idx in range(TRAINING_STEPS):
+				start_idx = idx * BATCH_SIZE % num
+				end_idx = (idx+1) * BATCH_SIZE % num
+				if end_idx > start_idx:
+					xs = inputs[start_idx:end_idx]
+				else:
+					xs = inputs[start_idx:]+inputs[:end_idx]
 
-			feed_dict = {x: xs, y_real: xs}
-			_, loss_value, step = sess.run([train_op, loss, global_step], feed_dict = feed_dict)		
-			#每ODEL_SAVE_CYC轮保存一次模型
-			if idx%MODEL_SAVE_CYC == 0:
-				print("After %d training step(s), loss on training batch is %g." % (idx, loss_value))
-				saver.save(
-					sess,
-					path.join(MODEL_SAVE_PATH, MODEL_NAME),
-					global_step = global_step
-				)
-
+				feed_dict = {x: xs, y_real: xs}
+				_, loss_value, step = sess.run([train_op, loss, global_step], feed_dict = feed_dict)		
+				#每ODEL_SAVE_CYC轮保存一次模型
+				if idx%MODEL_SAVE_CYC == 0:
+					print("After %d training step(s), loss on training batch is %g." % (idx, loss_value))
+					saver.save(
+						sess,
+						os.path.join(MODEL_SAVE_PATH, MODEL_NAME),
+						global_step = global_step
+					)
+	
+	writer = tf.summary.FileWriter(LOG, tf.get_default_graph())
+	writer.close()
+	
 #=================================================================================================================
 
 def main(argv=None):
+	# Delete files if train again.
+	for direc in [MODEL_SAVE_PATH, LOG]:
+		for i in os.listdir(direc):
+			os.remove(os.path.join(direc,i))
+	#Load data and train the model.
 	input_data = loadFile.load_data(SRC_TRAIN_FILE)
 	train(input_data)
 	
